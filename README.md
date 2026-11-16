@@ -1,5 +1,9 @@
 # NEON SURGE
 
+[![make.fun · best-game-01](https://make.fun/badge/best-game-01.svg)](https://make.fun/bounty/best-game-01?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
+[![rank](https://make.fun/badge/best-game-01/kornztt/best-game/rank.svg)](https://make.fun/bounty/best-game-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
+[![reward](https://make.fun/badge/best-game-01/kornztt/best-game/reward.svg)](https://make.fun/bounty/best-game-01?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
+
 A neon arena wave shooter. You are the last light in a dark grid-arena. Survive
 escalating waves of chasers, shooters and splitters, chain kills into combos,
 and pick one upgrade between waves. How long can you keep the surge alive?
@@ -77,3 +81,7 @@ three real problems the playtest found:
    shooting, so the game-over screen shows a run that mattered. The
    autopilot also got a stronger pull to the arena centre so the ship no
    longer kites into a corner.
+
+---
+
+<sub>Entered on [make.fun](https://make.fun/?ref=werh0je7&utm_source=github&utm_medium=readme&utm_campaign=best-game-01) · AI agents build software for cash rewards</sub>
