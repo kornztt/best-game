@@ -3,7 +3,7 @@
 // pause, game over). Nothing here changes the world.
 
 import { ARENA, PALETTE, PLAYER } from './config.js';
-import { SCREEN_TITLE, SCREEN_UPGRADE, SCREEN_OVER, SCREEN_PAUSED } from './world.js';
+import { SCREEN_TITLE, SCREEN_PLAY, SCREEN_UPGRADE, SCREEN_OVER, SCREEN_PAUSED } from './world.js';
 
 function glow(ctx, color, blur) {
   ctx.shadowColor = color;
@@ -106,6 +106,32 @@ function drawEnemy(ctx, e) {
   drawPolygon(ctx, 0, 0, e.radius, e.sides, rotation);
   ctx.fill();
   noGlow(ctx);
+  // Boss spikes: a crown of triangles around the hull.
+  if (e.kind === 'boss') {
+    ctx.fillStyle = e.color;
+    for (let i = 0; i < 8; i += 1) {
+      const a = rotation + (i / 8) * Math.PI * 2;
+      const bx = Math.cos(a) * (e.radius + 2);
+      const by = Math.sin(a) * (e.radius + 2);
+      const tx = Math.cos(a) * (e.radius + 16);
+      const ty = Math.sin(a) * (e.radius + 16);
+      ctx.beginPath();
+      ctx.moveTo(bx + Math.cos(a + 1.2) * 7, by + Math.sin(a + 1.2) * 7);
+      ctx.lineTo(tx, ty);
+      ctx.lineTo(bx + Math.cos(a - 1.2) * 7, by + Math.sin(a - 1.2) * 7);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  // Hit flash: a white overlay for a few frames after taking damage
+  // (also the darter's telegraph while it aims its dash).
+  if (e.flash > 0) {
+    ctx.globalAlpha = Math.min(1, e.flash / 0.09);
+    ctx.fillStyle = '#ffffff';
+    drawPolygon(ctx, 0, 0, e.radius, e.sides, rotation);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
   // Dark core + hp arc for tougher enemies.
   ctx.fillStyle = 'rgba(5,6,15,0.85)';
   ctx.beginPath();
@@ -120,11 +146,30 @@ function drawEnemy(ctx, e) {
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
+  // Elite ring: a bright white outline that marks the double-reward foe.
+  if (e.elite) {
+    ctx.strokeStyle = PALETTE.eliteRing;
+    ctx.globalAlpha = 0.9;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, e.radius + 9, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
   ctx.restore();
 }
 
 function drawBullets(ctx, world) {
   for (const b of world.bullets) {
+    // Trail: a short glowing streak behind the bullet's motion.
+    ctx.strokeStyle = PALETTE.bullet;
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(b.x - b.vx * 0.025, b.y - b.vy * 0.025);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
     glow(ctx, PALETTE.bullet, 10);
     ctx.fillStyle = PALETTE.bullet;
     ctx.beginPath();
@@ -132,6 +177,14 @@ function drawBullets(ctx, world) {
     ctx.fill();
   }
   for (const b of world.enemyBullets) {
+    ctx.strokeStyle = PALETTE.enemyBullet;
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(b.x - b.vx * 0.025, b.y - b.vy * 0.025);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
     glow(ctx, PALETTE.enemyBullet, 10);
     ctx.fillStyle = PALETTE.enemyBullet;
     ctx.beginPath();
@@ -139,6 +192,18 @@ function drawBullets(ctx, world) {
     ctx.fill();
   }
   noGlow(ctx);
+}
+
+function drawRings(ctx, world) {
+  for (const r of world.rings) {
+    ctx.globalAlpha = Math.max(0, r.life / r.maxLife);
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
 }
 
 function drawParticles(ctx, world) {
@@ -216,7 +281,26 @@ function drawHud(ctx, world) {
   ctx.textAlign = 'left';
   ctx.font = '13px "Segoe UI", system-ui, sans-serif';
   ctx.fillStyle = PALETTE.muted;
-  ctx.fillText(`DMG ${Math.round(p.bulletDamage)}   SHOTS x${p.projectiles}   BEST ${world.best}`, 24, ARENA.height - 20);
+  let extra = '';
+  if (p.pierce > 0) extra += `   PIERCE x${p.pierce}`;
+  if (p.regen > 0) extra += '   REGEN';
+  if (p.shrapnel) extra += '   SHRAPNEL';
+  ctx.fillText(`DMG ${Math.round(p.bulletDamage)}   SHOTS x${p.projectiles}   BEST ${world.best}${extra}`, 24, ARENA.height - 20);
+
+  // Boss health bar, top centre, while the Overlord lives.
+  const boss = world.enemies.find((e) => e.kind === 'boss' && !e.dead);
+  if (boss) {
+    const bw = 420;
+    const bx = (ARENA.width - bw) / 2;
+    const by = 150;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 15px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = '#ff1744';
+    glow(ctx, '#ff1744', 10);
+    ctx.fillText('☠ OVERLORD ☠', ARENA.width / 2, by - 8);
+    noGlow(ctx);
+    bar(ctx, bx, by, bw, 10, boss.hp / boss.maxHp, '#ff1744');
+  }
 
   // Wave banner.
   if (world.waveBanner > 0) {
@@ -274,22 +358,24 @@ function drawTitle(ctx, world) {
   ctx.font = '17px "Segoe UI", system-ui, sans-serif';
   ctx.fillStyle = PALETTE.muted;
   ctx.fillText('WASD / ARROWS — move      MOUSE — aim      HOLD CLICK — fire', ARENA.width / 2, 440);
-  ctx.fillText('Clear a wave to choose 1 upgrade. Overheat locks your gun — let it cool.', ARENA.width / 2, 470);
-  ctx.fillText('P — pause      M — mute', ARENA.width / 2, 500);
+  ctx.fillText('TOUCH — left side drag to move, right side to aim + fire', ARENA.width / 2, 468);
+  ctx.fillText('Clear a wave to choose 1 upgrade. Overheat locks your gun — let it cool.', ARENA.width / 2, 496);
+  ctx.fillText('Every 5th wave the OVERLORD comes. Elites pay double.', ARENA.width / 2, 524);
+  ctx.fillText('P — pause      M — mute', ARENA.width / 2, 552);
 
   ctx.font = 'bold 26px "Segoe UI", system-ui, sans-serif';
   const pulse = 0.65 + 0.35 * Math.sin(world.time * 4);
   ctx.globalAlpha = pulse;
   ctx.fillStyle = '#ffe95e';
   glow(ctx, '#ffe95e', 16);
-  ctx.fillText('— CLICK TO START —', ARENA.width / 2, 570);
+  ctx.fillText('— CLICK TO START —', ARENA.width / 2, 612);
   noGlow(ctx);
   ctx.globalAlpha = 1;
 
   if (world.best > 0) {
     ctx.font = '18px "Segoe UI", system-ui, sans-serif';
     ctx.fillStyle = PALETTE.muted;
-    ctx.fillText(`BEST SCORE  ${world.best}`, ARENA.width / 2, 620);
+    ctx.fillText(`BEST SCORE  ${world.best}`, ARENA.width / 2, 656);
   }
 }
 
@@ -397,6 +483,7 @@ export function render(ctx, world, input) {
   drawBullets(ctx, world);
   drawPlayer(ctx, world);
   drawParticles(ctx, world);
+  drawRings(ctx, world);
   drawFloatTexts(ctx, world);
   ctx.restore();
 
@@ -404,6 +491,15 @@ export function render(ctx, world, input) {
   if (world.flash > 0) {
     ctx.fillStyle = `rgba(255, 59, 92, ${world.flash * 0.9})`;
     ctx.fillRect(0, 0, ARENA.width, ARENA.height);
+  }
+
+  // Low-hull warning: a pulsing red edge while the ship is nearly gone.
+  if (world.screen === SCREEN_PLAY && world.player.alive
+    && world.player.health / world.player.maxHealth < 0.3) {
+    const a = 0.22 + 0.14 * Math.sin(world.time * 6);
+    ctx.strokeStyle = `rgba(255, 59, 92, ${a})`;
+    ctx.lineWidth = 14;
+    ctx.strokeRect(7, 7, ARENA.width - 14, ARENA.height - 14);
   }
 
   if (world.screen === SCREEN_TITLE) {

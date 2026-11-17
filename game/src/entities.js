@@ -54,6 +54,41 @@ export function makeSplitter(x, y, hpScale) {
   return e;
 }
 
+export function makeDarter(x, y, hpScale) {
+  const def = ENEMIES.darter;
+  const e = base('darter', x, y);
+  e.radius = def.radius;
+  e.hp = Math.round(def.hp * hpScale);
+  e.maxHp = e.hp;
+  e.speed = def.speed;
+  e.score = def.score;
+  e.contactDamage = def.contactDamage;
+  e.sides = def.sides;
+  e.color = def.color;
+  e.mode = 'roam';
+  e.modeTimer = 1.0 + Math.random() * 1.2;
+  e.dashX = 0;
+  e.dashY = 0;
+  return e;
+}
+
+export function makeBoss(x, y, hpScale) {
+  const def = ENEMIES.boss;
+  const e = base('boss', x, y);
+  e.radius = def.radius;
+  e.hp = Math.round(def.hp * hpScale);
+  e.maxHp = e.hp;
+  e.speed = def.speed;
+  e.score = def.score;
+  e.contactDamage = def.contactDamage;
+  e.sides = def.sides;
+  e.color = def.color;
+  e.fireTimer = 2.0;
+  e.fireInterval = def.fireInterval;
+  e.bulletSpeed = def.bulletSpeed;
+  return e;
+}
+
 export function makeMini(x, y, angle) {
   const def = ENEMIES.mini;
   const e = base('mini', x, y);
@@ -83,7 +118,14 @@ export function makeBullet(x, y, angle, speed, damage, friendly, radius = 5) {
     friendly,
     dead: false,
     life: 2.5,
+    pierceLeft: 0,
+    hitIds: null,
   };
+}
+
+/** An expanding shockwave ring, drawn as a stroked circle that fades. */
+export function makeRing(x, y, color, maxRadius, life = 0.6) {
+  return { x, y, color, radius: 8, maxRadius, life, maxLife: life, dead: false };
 }
 
 export function makeParticle(x, y, color, speed, life, size) {

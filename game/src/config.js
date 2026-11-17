@@ -16,6 +16,9 @@ export const PALETTE = {
   shooter: '#ff9f1c',
   splitter: '#39ff6a',
   mini: '#a4ff4f',
+  darter: '#c86bff',
+  boss: '#ff1744',
+  eliteRing: '#ffffff',
   enemyBullet: '#ff5c5c',
   text: '#eaf6ff',
   muted: '#8fa3c8',
@@ -94,15 +97,54 @@ export const ENEMIES = {
     contactDamage: 6,
     sides: 3,
   },
+  darter: {
+    kind: 'darter',
+    name: 'Darter',
+    color: PALETTE.darter,
+    radius: 14,
+    hp: 28,
+    speed: 95,
+    score: 175,
+    contactDamage: 12,
+    sides: 5,
+  },
+  boss: {
+    kind: 'boss',
+    name: 'Overlord',
+    color: PALETTE.boss,
+    radius: 54,
+    hp: 380,
+    speed: 55,
+    score: 1000,
+    contactDamage: 22,
+    fireInterval: 3.2,
+    bulletSpeed: 210,
+    sides: 8,
+  },
 };
 
+/** Wave modifiers from wave 4: each wave leans into one enemy kind. */
+export const MODIFIERS = ['SWARM', 'SNIPERS', 'SPLITTERS'];
+
+export function waveModifier(wave) {
+  if (wave % 5 === 0) return 'BOSS';
+  if (wave < 4) return null;
+  return MODIFIERS[wave % 3];
+}
+
 /** How many of each kind a wave fields, before the spawn budget trims it. */
-export function waveComposition(wave) {
-  return {
+export function waveComposition(wave, modifier = null) {
+  const comp = {
     chaser: 4 + wave * 2,
     shooter: wave >= 2 ? 1 + Math.floor(wave / 2) : 0,
     splitter: wave >= 3 ? Math.floor((wave - 1) / 2) : 0,
+    darter: wave >= 2 ? 1 + Math.floor(wave / 3) : 0,
+    boss: modifier === 'BOSS' ? 1 : 0,
   };
+  if (modifier === 'SWARM') comp.chaser += 5;
+  else if (modifier === 'SNIPERS') comp.shooter += 3;
+  else if (modifier === 'SPLITTERS') comp.splitter += 3;
+  return comp;
 }
 
 /** Seconds between spawns inside a wave; waves get denser as they go on. */
@@ -148,6 +190,37 @@ export const UPGRADES = [
     icon: '✦',
     blurb: '+1 projectile per shot',
     apply: (p) => { p.projectiles = Math.min(5, (p.projectiles || 1) + 1); },
+  },
+  {
+    id: 'pierce',
+    name: 'PIERCING ROUNDS',
+    icon: '➶',
+    blurb: 'bullets pierce +1 enemy',
+    apply: (p) => { p.pierce = Math.min(3, (p.pierce || 0) + 1); },
+  },
+  {
+    id: 'regen',
+    name: 'NANOBOT SWARM',
+    icon: '✚',
+    blurb: 'regenerate +1.5 hull / sec',
+    apply: (p) => { p.regen = (p.regen || 0) + 1.5; },
+  },
+  {
+    id: 'coolant',
+    name: 'CRYO COOLANT',
+    icon: '❄',
+    blurb: '-35% heat per shot, cool 50% faster',
+    apply: (p) => {
+      p.heatPerShot = (p.heatPerShot || 7) * 0.65;
+      p.coolRate = (p.coolRate || 34) * 1.5;
+    },
+  },
+  {
+    id: 'shrapnel',
+    name: 'SHRAPNEL CORE',
+    icon: '✹',
+    blurb: 'kills detonate, 30 damage nearby',
+    apply: (p) => { p.shrapnel = true; },
   },
 ];
 

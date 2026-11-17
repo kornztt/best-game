@@ -90,17 +90,18 @@ export function stageShot(name, world) {
   if (name === 'play') {
     startRun(world);
     // Play in short bursts and stop mid-wave, while the arena is busy:
-    // several enemies alive, bullets in flight, combo running. Never stop
-    // on a cleared wave — an empty arena says nothing about the game.
-    for (let burst = 0; burst < 30; burst += 1) {
+    // several enemies alive, bullets in flight, combo running. Prefer a
+    // wave-3+ frame (darters in play) but take any busy frame after 20s.
+    for (let burst = 0; burst < 60; burst += 1) {
       runAutopilot(world, input, 1, 1);
       if (world.screen === SCREEN_UPGRADE) {
         applyUpgrade(world, 0);
         continue;
       }
       if (world.screen === SCREEN_OVER) break;
-      const busy = world.enemies.length >= 3 && world.bullets.length >= 2;
-      if (busy && world.time > 6) break;
+      const busy = world.enemies.length >= 4 && world.bullets.length >= 2;
+      if (busy && world.wave >= 3 && world.time > 6) break;
+      if (busy && world.time > 20) break;
     }
     if (world.screen === SCREEN_UPGRADE) applyUpgrade(world, 0);
     if (world.screen !== SCREEN_PLAY) {

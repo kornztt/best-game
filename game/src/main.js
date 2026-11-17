@@ -41,9 +41,8 @@ function cardIndexAt(x, y) {
   return -1;
 }
 
-canvas.addEventListener('mousedown', (event) => {
+function handlePointerDown(clientX, clientY) {
   unlockAudio();
-  if (event.button !== 0) return;
   if (world.screen === SCREEN_TITLE) {
     sfx.click();
     startRun(world);
@@ -52,11 +51,22 @@ canvas.addEventListener('mousedown', (event) => {
     startRun(world);
   } else if (world.screen === SCREEN_UPGRADE) {
     const rect = canvas.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
-    const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    const x = ((clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((clientY - rect.top) / rect.height) * canvas.height;
     const index = cardIndexAt(x, y);
     if (index >= 0) applyUpgrade(world, index);
   }
+}
+
+canvas.addEventListener('mousedown', (event) => {
+  if (event.button !== 0) return;
+  handlePointerDown(event.clientX, event.clientY);
+});
+
+// Touch taps start / restart / pick upgrades the same way clicks do.
+canvas.addEventListener('touchstart', (event) => {
+  const t = event.changedTouches[0];
+  if (t) handlePointerDown(t.clientX, t.clientY);
 });
 
 function handleKeys() {

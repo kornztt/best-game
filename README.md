@@ -10,8 +10,8 @@ and pick one upgrade between waves. How long can you keep the surge alive?
 
 ## Controls
 
-- **Move:** WASD or arrow keys
-- **Aim:** mouse
+- **Move:** WASD or arrow keys, or drag on the left half of a touch screen
+- **Aim:** mouse, or touch the right half of a touch screen (auto-fires)
 - **Shoot:** hold left mouse button (watch the heat bar — overheating locks the gun until it cools)
 - **Pause:** P or Esc
 - **Upgrade choice:** click a card, or press 1 / 2 / 3
@@ -32,9 +32,11 @@ lives under `game/`.
 
 ## The loop
 
-1. A wave of enemies spawns from the arena edges.
+1. A wave of enemies spawns from the arena edges — chasers, shooters,
+   splitters, darters, and every 5th wave a boss.
 2. Clear the wave to open the upgrade screen — pick 1 of 3 upgrades
-   (damage, fire rate, speed, shield, multi-shot).
+   (damage, fire rate, speed, shield, multi-shot, piercing, regen,
+   coolant, shrapnel).
 3. The next wave is bigger and faster. Score grows with kills and with your
    combo multiplier. Health hits zero and the run ends; your best score is
    saved locally.
@@ -81,6 +83,49 @@ three real problems the playtest found:
    shooting, so the game-over screen shows a run that mattered. The
    autopilot also got a stronger pull to the arena centre so the ship no
    longer kites into a corner.
+
+## Revision 2 — 2026-11-17 (second improvement round, before resubmission)
+
+A full playtest pass in headed Firefox (Xvfb + llvmpipe) found the game
+solid but thin: three enemy kinds, five upgrades, no boss, no touch
+support, and a gameplay screenshot that read as empty dark space. Changed:
+
+1. **Boss waves (config.js, entities.js, world.js, render.js).** Every 5th
+   wave is a BOSS wave: one OVERLORD (54px spiked hull, ~500 HP at wave 5,
+   slow chase, 10-bullet radial bursts every 3.2s) with a top-centre health
+   bar. Killing it pays 1000 points and repairs +30 hull. Verified live:
+   radial bursts seen (10 enemy bullets at once), boss kill paid 1100 with
+   the combo multiplier.
+2. **Darter enemy (config.js, entities.js, world.js).** From wave 2: roams
+   toward the player, flashes white to telegraph for 0.5s, then dashes at
+   520 px/s. Verified spawning in wave 5+ play.
+3. **Elite enemies (world.js, render.js).** From wave 4, 12% of spawns are
+   elites: 2.2x HP, 1.15x speed, double score, marked with a white ring.
+   Verified: an elite chaser spawned with 68 HP (base 31).
+4. **Four new upgrades (config.js, world.js).** Piercing Rounds (bullets
+   pierce +1 enemy), Nanobot Swarm (+1.5 hull/sec regen), Cryo Coolant
+   (-35% heat per shot, +50% cooling), Shrapnel Core (kills detonate for
+   30 damage in a 100px radius). All four verified by clicking the cards:
+   pierce 0→1, heat per shot 7→4.55, regen 0→1.5, shrapnel on.
+5. **Wave modifiers (config.js, world.js).** From wave 4, waves lean into
+   one kind — SWARM, SNIPERS or SPLITTERS — shown in the wave banner.
+6. **Game feel (world.js, render.js).** Enemies flash white when hit,
+   muzzle-flash sparks, glowing bullet trails, expanding shockwave rings on
+   splitter/boss kills and player death, and a pulsing red vignette under
+   30% hull.
+7. **Touch controls (input.js, main.js).** Left-half drag is a virtual
+   joystick, right-half touch aims and auto-fires; taps start, restart and
+   pick upgrade cards. Verified with synthetic touch events: joystick moved
+   the ship 214px, aim locked to the touch point, bullets fired.
+8. **Music (audio.js).** A quiet 16-step bass + hat loop (A minor,
+   140 BPM) starts only after the first gesture, so it never autoplays;
+   M mutes it. Plus a two-tone boss alarm, boss-shot boom and dash whoosh.
+
+Screenshots re-taken from the same deterministic `?shot=` scenes
+(seed 7): the gameplay shot is now wave 4, score 10785, combo x3.0 with
+bullet trails and a darter on screen. Full verification (staged shots,
+upgrade clicks, R restart, live 10s playtest, pause, boss fight, touch)
+reports zero page errors.
 
 ---
 

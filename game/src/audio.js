@@ -23,6 +23,37 @@ export function unlockAudio() {
   // resume() rejects (InvalidStateError) when the document is not the active
   // one — e.g. during a scripted scene — so never let it reject unhandled.
   if (ac && ac.state === 'suspended') ac.resume().catch(() => {});
+  startMusic();
+}
+
+// A quiet 16-step bass + hat loop (A minor, 140 BPM), scheduled a bar
+// ahead. It only starts after the first gesture, so it never autoplays,
+// and mute silences it because every note goes through tone()/noise().
+let musicTimer = null;
+let musicStep = 0;
+let musicNextTime = 0;
+const BASS_LINE = [55, 0, 55, 65.41, 0, 55, 0, 82.41, 49, 0, 49, 58.27, 0, 65.41, 73.42, 0];
+
+function scheduleMusic() {
+  const ac = audioContext();
+  if (!ac) return;
+  const stepDur = 60 / 140 / 4;
+  while (musicNextTime < ac.currentTime + 0.25) {
+    const delay = Math.max(0, musicNextTime - ac.currentTime);
+    const f = BASS_LINE[musicStep % 16];
+    if (f) tone({ type: 'triangle', from: f, seconds: 0.22, volume: 0.09, delay });
+    if (musicStep % 2 === 1) noise({ seconds: 0.03, volume: 0.035, frequency: 7000, delay });
+    musicStep += 1;
+    musicNextTime += stepDur;
+  }
+}
+
+export function startMusic() {
+  const ac = audioContext();
+  if (!ac || musicTimer) return;
+  musicNextTime = ac.currentTime + 0.1;
+  musicStep = 0;
+  musicTimer = setInterval(scheduleMusic, 100);
 }
 
 export function toggleMute() {
@@ -111,5 +142,18 @@ export const sfx = {
   },
   overheat() {
     tone({ type: 'square', from: 140, to: 90, seconds: 0.18, volume: 0.3 });
+  },
+  boss() {
+    tone({ type: 'sawtooth', from: 110, to: 55, seconds: 0.5, volume: 0.4 });
+    tone({ type: 'sawtooth', from: 110, to: 55, seconds: 0.5, volume: 0.4, delay: 0.55 });
+    noise({ seconds: 0.4, volume: 0.3, frequency: 500 });
+  },
+  bossShoot() {
+    tone({ type: 'sine', from: 90, to: 45, seconds: 0.25, volume: 0.4 });
+    noise({ seconds: 0.2, volume: 0.25, frequency: 800 });
+  },
+  dash() {
+    noise({ seconds: 0.15, volume: 0.3, frequency: 2400 });
+    tone({ type: 'square', from: 700, to: 1400, seconds: 0.12, volume: 0.15 });
   },
 };

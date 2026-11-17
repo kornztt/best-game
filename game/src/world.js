@@ -2,9 +2,9 @@
 // movement, shooting, collisions, upgrades, score and game over — and step
 // it forward one fixed tick at a time.
 
-import { ARENA, PLAYER, COMBO, ENEMIES, waveComposition, spawnInterval, rollUpgrades } from './config.js';
+import { ARENA, PLAYER, COMBO, ENEMIES, waveComposition, waveModifier, spawnInterval, rollUpgrades } from './config.js';
 import { makeRng, range } from './random.js';
-import { makeChaser, makeShooter, makeSplitter, makeMini, makeBullet, burst, makeFloatText } from './entities.js';
+import { makeChaser, makeShooter, makeSplitter, makeMini, makeDarter, makeBoss, makeBullet, makeRing, burst, makeFloatText } from './entities.js';
 import { moveVector } from './input.js';
 import { sfx } from './audio.js';
 
@@ -45,9 +45,11 @@ export function createWorld(seed = 1) {
     bullets: [],
     enemyBullets: [],
     particles: [],
+    rings: [],
     texts: [],
     stars: makeStars(rng),
     wave: 0,
+    modifier: null,
     spawnQueue: [],
     spawnTimer: 0,
     betweenWaves: false,
@@ -80,6 +82,11 @@ function freshPlayer() {
     bulletSpeed: PLAYER.bulletSpeed,
     bulletDamage: PLAYER.bulletDamage,
     projectiles: 1,
+    pierce: 0,
+    regen: 0,
+    heatPerShot: PLAYER.heatPerShot,
+    coolRate: PLAYER.heatCoolRate,
+    shrapnel: false,
     heat: 0,
     overheated: false,
     fireTimer: 0,
@@ -112,17 +119,22 @@ export function startRun(world) {
 export function startWave(world) {
   world.wave += 1;
   world.screen = SCREEN_PLAY;
-  const comp = waveComposition(world.wave);
+  const modifier = waveModifier(world.wave);
+  world.modifier = modifier;
+  const comp = waveComposition(world.wave, modifier);
   world.spawnQueue = [];
   for (let i = 0; i < comp.chaser; i += 1) world.spawnQueue.push('chaser');
   for (let i = 0; i < comp.shooter; i += 1) world.spawnQueue.push('shooter');
   for (let i = 0; i < comp.splitter; i += 1) world.spawnQueue.push('splitter');
+  for (let i = 0; i < comp.darter; i += 1) world.spawnQueue.push('darter');
+  for (let i = 0; i < comp.boss; i += 1) world.spawnQueue.push('boss');
   shuffle(world.rng, world.spawnQueue);
   world.spawnTimer = 0.5;
   world.betweenWaves = false;
   world.waveBanner = 2.2;
-  world.waveBannerText = `WAVE ${world.wave}`;
-  sfx.waveStart();
+  world.waveBannerText = modifier ? `WAVE ${world.wave} — ${modifier}` : `WAVE ${world.wave}`;
+  if (modifier === 'BOSS') sfx.boss();
+  else sfx.waveStart();
 }
 
 function shuffle(rng, list) {
@@ -150,7 +162,17 @@ function spawnEnemy(world, kind) {
     enemy = makeShooter(pos.x, pos.y, hpScale);
     enemy.fireTimer = 1.0 + world.rng() * 1.5;
   } else if (kind === 'splitter') enemy = makeSplitter(pos.x, pos.y, hpScale);
+  else if (kind === 'darter') enemy = makeDarter(pos.x, pos.y, hpScale);
+  else if (kind === 'boss') enemy = makeBoss(pos.x, pos.y, hpScale);
   if (enemy) {
+    // Elites from wave 4: tougher, faster, worth double. Never the boss.
+    if (world.wave >= 4 && kind !== 'boss' && world.rng() < 0.12) {
+      enemy.elite = true;
+      enemy.hp = Math.round(enemy.hp * 2.2);
+      enemy.maxHp = enemy.hp;
+      enemy.speed *= 1.15;
+      enemy.score *= 2;
+    }
     enemy.angle = Math.atan2(world.player.y - enemy.y, world.player.x - enemy.x);
     world.enemies.push(enemy);
     world.particles.push(...burst(enemy.x, enemy.y, enemy.color, 10, 120, 0.5, 2.5));
@@ -167,9 +189,14 @@ function firePlayerBullets(world) {
     const angle = baseAngle + offset;
     const nx = p.x + Math.cos(angle) * (p.radius + 8);
     const ny = p.y + Math.sin(angle) * (p.radius + 8);
-    world.bullets.push(makeBullet(nx, ny, angle, p.bulletSpeed, p.bulletDamage, true));
+    const b = makeBullet(nx, ny, angle, p.bulletSpeed, p.bulletDamage, true);
+    b.pierceLeft = p.pierce || 0;
+    b.hitIds = new Set();
+    world.bullets.push(b);
+    // Muzzle flash: a few bright sparks at the gun's nose.
+    if (i === 0) world.particles.push(...burst(nx, ny, '#ffe95e', 4, 220, 0.12, 2.5));
   }
-  p.heat += PLAYER.heatPerShot;
+  p.heat += p.heatPerShot;
   if (p.heat >= PLAYER.overheatAt) {
     p.overheated = true;
     sfx.overheat();
@@ -194,6 +221,7 @@ function damagePlayer(world, amount) {
     p.alive = false;
     world.particles.push(...burst(p.x, p.y, '#00f0ff', 60, 320, 1.0, 4));
     world.particles.push(...burst(p.x, p.y, '#ffffff', 30, 200, 0.8, 3));
+    world.rings.push(makeRing(p.x, p.y, '#00f0ff', 220, 0.9));
     world.shake = 18;
     sfx.explode(true);
     sfx.gameOver();
@@ -223,9 +251,31 @@ function killEnemy(world, enemy) {
   world.shake = Math.max(world.shake, enemy.kind === 'splitter' ? 7 : 4);
   sfx.explode(enemy.kind === 'splitter');
   if (enemy.kind === 'splitter') {
+    world.rings.push(makeRing(enemy.x, enemy.y, enemy.color, 90, 0.5));
     const a = world.rng() * Math.PI * 2;
     world.enemies.push(makeMini(enemy.x, enemy.y, a));
     world.enemies.push(makeMini(enemy.x, enemy.y, a + Math.PI));
+  }
+  if (enemy.kind === 'boss') {
+    world.rings.push(makeRing(enemy.x, enemy.y, '#ff1744', 280, 0.9));
+    world.rings.push(makeRing(enemy.x, enemy.y, '#ffffff', 180, 0.7));
+    world.particles.push(...burst(enemy.x, enemy.y, '#ff1744', 50, 380, 1.0, 4));
+    world.shake = 20;
+    // The boss drops hull: killing it patches the ship up.
+    const p = world.player;
+    p.health = Math.min(p.maxHealth, p.health + 30);
+    world.texts.push(makeFloatText(p.x, p.y - 24, '+30 HULL', '#39ff6a', 18));
+  }
+  // Shrapnel core: the kill detonates and hurts everything nearby.
+  if (world.player.shrapnel) {
+    const targets = world.enemies.filter((e) => !e.dead && e !== enemy
+      && (e.x - enemy.x) ** 2 + (e.y - enemy.y) ** 2 < 100 * 100);
+    world.rings.push(makeRing(enemy.x, enemy.y, '#ffb52e', 100, 0.4));
+    for (const t of targets) {
+      t.hp -= 30;
+      t.flash = 0.09;
+      if (t.hp <= 0) killEnemy(world, t);
+    }
   }
 }
 
@@ -281,6 +331,12 @@ export function stepWorld(world, dt, input) {
     if (t.life <= 0) t.dead = true;
   }
   world.texts = world.texts.filter((t) => !t.dead);
+  for (const r of world.rings) {
+    r.radius += (r.maxRadius - r.radius) * 6 * dt + 40 * dt;
+    r.life -= dt;
+    if (r.life <= 0) r.dead = true;
+  }
+  world.rings = world.rings.filter((r) => !r.dead);
 
   if (world.screen !== SCREEN_PLAY) return;
   const p = world.player;
@@ -292,23 +348,32 @@ export function stepWorld(world, dt, input) {
     if (world.comboTimer <= 0) world.combo = 0;
   }
 
-  // Movement + aim.
+  // Movement + aim. Touch joystick overrides keys; a right-half touch
+  // aims and auto-fires. (Staged fake inputs have neither field.)
+  const joy = input && input.joy && input.joy.active ? input.joy : null;
+  const touchAim = input && input.touchAim && input.touchAim.active ? input.touchAim : null;
   if (input) {
-    const mv = moveVector(input);
+    const mv = joy ? { x: joy.x, y: joy.y } : moveVector(input);
     p.x += mv.x * p.speed * dt;
     p.y += mv.y * p.speed * dt;
-    p.angle = Math.atan2(input.mouseY - p.y, input.mouseX - p.x);
+    const ax = touchAim ? touchAim.x : input.mouseX;
+    const ay = touchAim ? touchAim.y : input.mouseY;
+    p.angle = Math.atan2(ay - p.y, ax - p.x);
   }
   clampToArena(p, p.radius + 6);
   if (p.invulnerable > 0) p.invulnerable -= dt;
 
+  // Nanobot regeneration, if bought.
+  if (p.regen > 0) p.health = Math.min(p.maxHealth, p.health + p.regen * dt);
+
   // Heat.
-  p.heat = Math.max(0, p.heat - PLAYER.heatCoolRate * dt);
+  p.heat = Math.max(0, p.heat - p.coolRate * dt);
   if (p.overheated && p.heat <= PLAYER.coolUntil) p.overheated = false;
 
   // Shooting.
   p.fireTimer -= dt;
-  if (input && input.mouseDown && !p.overheated && p.fireTimer <= 0) {
+  const firing = input && (input.mouseDown || !!touchAim);
+  if (firing && !p.overheated && p.fireTimer <= 0) {
     firePlayerBullets(world);
     p.fireTimer = p.fireInterval;
   }
@@ -333,9 +398,48 @@ export function stepWorld(world, dt, input) {
     const dist = Math.hypot(dx, dy) || 1;
     e.angle = Math.atan2(dy, dx);
     e.spin += dt;
+    if (e.flash > 0) e.flash -= dt;
     if (e.kind === 'chaser' || e.kind === 'splitter') {
       e.vx = (dx / dist) * e.speed;
       e.vy = (dy / dist) * e.speed;
+    } else if (e.kind === 'darter') {
+      // Roam toward the player, telegraph (flash, hold still), then dash.
+      e.modeTimer -= dt;
+      if (e.mode === 'roam') {
+        e.vx = (dx / dist) * e.speed;
+        e.vy = (dy / dist) * e.speed;
+        if (e.modeTimer <= 0) { e.mode = 'aim'; e.modeTimer = 0.5; }
+      } else if (e.mode === 'aim') {
+        e.vx = 0;
+        e.vy = 0;
+        e.flash = 0.1;
+        if (e.modeTimer <= 0) {
+          e.mode = 'dash';
+          e.modeTimer = 0.45;
+          e.dashX = dx / dist;
+          e.dashY = dy / dist;
+          sfx.dash();
+        }
+      } else {
+        e.vx = e.dashX * 520;
+        e.vy = e.dashY * 520;
+        if (e.modeTimer <= 0) { e.mode = 'roam'; e.modeTimer = 1.2 + world.rng() * 1.2; }
+      }
+    } else if (e.kind === 'boss') {
+      // Slow chase, with a radial bullet burst every few seconds.
+      e.vx = (dx / dist) * e.speed;
+      e.vy = (dy / dist) * e.speed;
+      e.fireTimer -= dt;
+      if (e.fireTimer <= 0) {
+        e.fireTimer = e.fireInterval;
+        const n = 10;
+        for (let i = 0; i < n; i += 1) {
+          const a = (i / n) * Math.PI * 2 + world.time * 0.3;
+          world.enemyBullets.push(makeBullet(e.x, e.y, a, e.bulletSpeed, 10, false, 6));
+        }
+        world.particles.push(...burst(e.x, e.y, '#ff1744', 20, 260, 0.5, 3));
+        sfx.bossShoot();
+      }
     } else if (e.kind === 'mini') {
       // Shards drift, then steer gently toward the player.
       e.vx += (dx / dist) * 260 * dt;
@@ -382,14 +486,22 @@ export function stepWorld(world, dt, input) {
     }
     for (const e of world.enemies) {
       if (e.dead) continue;
+      if (b.hitIds && b.hitIds.has(e.id)) continue;
       if (collide(b, e)) {
-        b.dead = true;
         e.hp -= b.damage;
+        e.flash = 0.09;
         world.stats.shotsHit += 1;
         world.particles.push(...burst(b.x, b.y, '#ffe95e', 4, 140, 0.3, 2));
         if (e.hp <= 0) killEnemy(world, e);
         else sfx.hit();
-        break;
+        if (b.hitIds) b.hitIds.add(e.id);
+        if (b.pierceLeft > 0) {
+          b.pierceLeft -= 1;
+          // Piercing rounds keep flying to the next enemy.
+        } else {
+          b.dead = true;
+          break;
+        }
       }
     }
   }

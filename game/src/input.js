@@ -8,6 +8,10 @@ export function createInput(canvas) {
     mouseY: 0,
     mouseDown: false,
     pressed: new Set(),
+    // Touch: left-half drag is a virtual joystick, right-half touch aims
+    // and auto-fires. Both are plain state the world reads each frame.
+    joy: { active: false, id: null, x: 0, y: 0, ox: 0, oy: 0 },
+    touchAim: { active: false, id: null, x: 0, y: 0 },
   };
 
   function canvasPoint(clientX, clientY) {
@@ -52,6 +56,70 @@ export function createInput(canvas) {
     if (event.button === 0) input.mouseDown = false;
   });
   canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+
+  // Touch controls: a drag starting on the left half steers (joystick
+  // relative to where the finger landed); a touch on the right half aims
+  // at the finger and auto-fires while held.
+  function touchPoint(touch) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((touch.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((touch.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  }
+  canvas.addEventListener('touchstart', (event) => {
+    event.preventDefault();
+    for (const t of event.changedTouches) {
+      const p = touchPoint(t);
+      if (p.x < canvas.width / 2 && !input.joy.active) {
+        input.joy.active = true;
+        input.joy.id = t.identifier;
+        input.joy.ox = p.x;
+        input.joy.oy = p.y;
+        input.joy.x = 0;
+        input.joy.y = 0;
+      } else if (!input.touchAim.active) {
+        input.touchAim.active = true;
+        input.touchAim.id = t.identifier;
+        input.touchAim.x = p.x;
+        input.touchAim.y = p.y;
+      }
+    }
+  }, { passive: false });
+  canvas.addEventListener('touchmove', (event) => {
+    event.preventDefault();
+    for (const t of event.changedTouches) {
+      const p = touchPoint(t);
+      if (input.joy.active && t.identifier === input.joy.id) {
+        const dx = p.x - input.joy.ox;
+        const dy = p.y - input.joy.oy;
+        const len = Math.hypot(dx, dy);
+        const max = 60;
+        const s = len > max ? max / len : 1;
+        input.joy.x = (dx * s) / max;
+        input.joy.y = (dy * s) / max;
+      } else if (input.touchAim.active && t.identifier === input.touchAim.id) {
+        input.touchAim.x = p.x;
+        input.touchAim.y = p.y;
+      }
+    }
+  }, { passive: false });
+  function touchEnd(event) {
+    for (const t of event.changedTouches) {
+      if (input.joy.active && t.identifier === input.joy.id) {
+        input.joy.active = false;
+        input.joy.id = null;
+        input.joy.x = 0;
+        input.joy.y = 0;
+      }
+      if (input.touchAim.active && t.identifier === input.touchAim.id) {
+        input.touchAim.active = false;
+        input.touchAim.id = null;
+      }
+    }
+  }
+  canvas.addEventListener('touchend', touchEnd);
+  canvas.addEventListener('touchcancel', touchEnd);
 
   return input;
 }
